@@ -27,6 +27,7 @@ type ProfessorQuestion = Question & {
 }
 type ProfessorDashboardResponse = { questions: ProfessorQuestion[]; unansweredCount: number }
 type DashboardFilters = { status: string; campusId: string; classroomId: string; category: string }
+type Answer = { id: number; questionId: number; professorId: number; content: string; visibility: string; createdAt: string }
 
 async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -44,7 +45,7 @@ async function request<T>(path: string, token?: string, init?: RequestInit): Pro
 }
 
 function statusLabel(status: string) {
-  return status === 'OPEN' ? '미답변' : status
+  return status === 'OPEN' ? '미답변' : status === 'ANSWERED' ? '답변 완료' : status
 }
 
 function ProfessorDashboard({ token, user, onLogout }: { token: string; user: User; onLogout: () => void }) {
@@ -54,6 +55,7 @@ function ProfessorDashboard({ token, user, onLogout }: { token: string; user: Us
   const [selected, setSelected] = useState<ProfessorQuestion | null>(null)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [answerSubmitting, setAnswerSubmitting] = useState(false)
   const [error, setError] = useState('')
   const hasFilters = Object.values(filters).some(Boolean)
 
@@ -97,6 +99,41 @@ function ProfessorDashboard({ token, user, onLogout }: { token: string; user: Us
       setError((reason as Error).message)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  async function submitAnswer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!selected || selected.status !== 'OPEN' || answerSubmitting) return
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    setAnswerSubmitting(true)
+    setError('')
+    try {
+      await request<Answer>(`/api/professor/questions/${selected.id}/answers`, token, {
+        method: 'POST',
+        body: JSON.stringify({ content: form.get('content'), visibility: form.get('visibility') }),
+      })
+      setSelected((current) => current ? { ...current, status: 'ANSWERED' } : current)
+      setDashboard((current) => {
+        if (!current) return current
+        const updated = current.questions.map((question) => question.id === selected.id
+          ? { ...question, status: 'ANSWERED' }
+          : question)
+        return {
+          ...current,
+          questions: filters.status === 'OPEN' ? updated.filter((question) => question.status !== 'ANSWERED') : updated,
+          unansweredCount: Math.max(0, current.unansweredCount - 1),
+        }
+      })
+      setAllQuestions((current) => current.map((question) => question.id === selected.id
+        ? { ...question, status: 'ANSWERED' }
+        : question))
+      formElement.reset()
+    } catch (reason) {
+      setError((reason as Error).message)
+    } finally {
+      setAnswerSubmitting(false)
     }
   }
 
@@ -161,7 +198,20 @@ function ProfessorDashboard({ token, user, onLogout }: { token: string; user: Us
           <p className="eyebrow">{selected.campusName} · {selected.classroomName}</p>
           <h2 id="professor-question-title">{selected.title}</h2>
           <p className="question-meta">카테고리: {selected.category} · 상태: {statusLabel(selected.status)}</p>
-          {detailLoading ? <p>상세 내용을 불러오는 중입니다.</p> : <p className="question-content">{selected.content}</p>}
+          {detailLoading ? <p>상세 내용을 불러오는 중입니다.</p> : <>
+            <p className="question-content">{selected.content}</p>
+            {selected.status === 'OPEN' && <form className="answer-form" onSubmit={submitAnswer}>
+              <h3>답변 등록</h3>
+              <label>공개 범위<select name="visibility" defaultValue="PRIVATE">
+                <option value="PRIVATE">개인 (질문자만)</option>
+                <option value="CLASS">클래스 전체</option>
+                <option value="CAMPUS">캠퍼스 전체</option>
+                <option value="GLOBAL">전체 캠퍼스</option>
+              </select></label>
+              <label>답변 내용<textarea name="content" rows={6} maxLength={10000} required /></label>
+              <button type="submit" disabled={answerSubmitting}>{answerSubmitting ? '등록 중...' : '답변 등록'}</button>
+            </form>}
+          </>}
         </dialog>
       )}
     </main>

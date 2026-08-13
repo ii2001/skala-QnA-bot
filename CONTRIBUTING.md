@@ -2,8 +2,7 @@
 
 ## Branch Strategy
 
-- `main`: 안정 및 배포 버전
-- `dev`: 통합 개발 버전
+- `main`: 기본 통합 및 배포 버전
 - `feat/{part}/{feature}`: 기능 개발
 - `fix/{part}/{feature}`: 오류 수정
 - `chore/{feature}`: 설정 및 환경 작업
@@ -16,17 +15,17 @@
 
 ## Workflow
 
-1. 최신 `dev`를 가져온다.
-2. `dev`에서 작업 브랜치를 생성한다.
-3. 작업 완료 후 `dev` 대상 Pull Request를 생성한다.
+1. 최신 `main`을 가져온다.
+2. `main`에서 작업 브랜치를 생성한다.
+3. 작업 완료 후 `main` 대상 Pull Request를 생성한다.
 4. CodeRabbit 리뷰와 팀원 리뷰를 확인한다.
 5. 승인 후 Squash Merge한다.
 6. 병합된 작업 브랜치는 삭제한다.
 
 ## Issue 자동 종료
 
-`dev` 대상 PR 본문에 `Closes #123`, `Fixes #123`, `Resolves #123`과 같은
-closing keyword를 작성하면 PR이 `dev`에 병합된 후 해당 Issue가 자동으로
+`main` 대상 PR 본문에 `Closes #123`, `Fixes #123`, `Resolves #123`과 같은
+closing keyword를 작성하면 PR이 `main`에 병합된 후 해당 Issue가 자동으로
 완료 처리된다. 각 keyword의 표준 변형(`close/closes/closed`,
 `fix/fixes/fixed`, `resolve/resolves/resolved`)과 선택적 콜론을 대소문자
 구분 없이 지원한다.
@@ -74,7 +73,7 @@ PR 본문에는 변경 내용과 검증 결과를 작성하고, Issue 작업이�
 
 ## Rules
 
-- `main`, `dev`에 직접 Push하지 않는다.
+- `main`에 직접 Push하지 않는다.
 - 하나의 브랜치에서는 하나의 작업만 수행한다.
 - API Key, 비밀번호, 개인정보를 커밋하지 않는다.
 - `contracts/` 변경은 AI, Backend, Frontend 담당자가 함께 확인한다.

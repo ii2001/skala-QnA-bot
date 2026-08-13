@@ -23,6 +23,9 @@ public class User {
 	@Column(nullable = false, unique = true)
 	private String email;
 
+	@Column(name = "password_hash", length = 255)
+	private String passwordHash;
+
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 20)
 	private UserRole role;
@@ -31,9 +34,14 @@ public class User {
 	}
 
 	public User(String name, String email, UserRole role) {
+		this(name, email, role, null);
+	}
+
+	public User(String name, String email, UserRole role, String passwordHash) {
 		this.name = name;
 		this.email = email;
 		this.role = role;
+		this.passwordHash = passwordHash;
 	}
 
 	public Long getId() {
@@ -52,9 +60,18 @@ public class User {
 		return role;
 	}
 
+	public String getPasswordHash() {
+		return passwordHash;
+	}
+
 	public void update(String name, String email, UserRole role) {
+		update(name, email, role, passwordHash);
+	}
+
+	public void update(String name, String email, UserRole role, String passwordHash) {
 		this.name = name;
 		this.email = email;
 		this.role = role;
+		this.passwordHash = passwordHash;
 	}
 }

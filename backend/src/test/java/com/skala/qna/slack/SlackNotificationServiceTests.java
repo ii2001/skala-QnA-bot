@@ -45,10 +45,14 @@ class SlackNotificationServiceTests {
 	private SlackIntegrationService slack;
 
 	@Autowired
+	private SlackChannelMappingRepository channelMappings;
+
+	@Autowired
 	private RecordingSlackMessageSender sender;
 
 	@BeforeEach
 	void clearMessages() {
+		channelMappings.deleteAll();
 		sender.messages.clear();
 		sender.fail = false;
 	}
@@ -81,6 +85,7 @@ class SlackNotificationServiceTests {
 		Fixture fixture = fixture(1, true);
 		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
 				"백엔드", "질문 제목", "질문 내용");
+		slack.mapChannel("CLASS", fixture.classroomId(), "C-answer-failure");
 		sender.messages.clear();
 		sender.fail = true;
 
@@ -88,7 +93,100 @@ class SlackNotificationServiceTests {
 				AnswerVisibility.CLASS);
 
 		assertThat(answerRepository.findById(answer.getId())).isPresent();
-		assertThat(sender.messages).hasSize(1);
+		assertThat(sender.messages).hasSize(2);
+	}
+
+	@Test
+	void privateAnswerDoesNotBroadcastToChannels() {
+		Fixture fixture = fixture(1, true);
+		slack.mapChannel("CLASS", fixture.classroomId(), "C-private-answer");
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용", AnswerVisibility.PRIVATE);
+
+		assertThat(sender.messages).extracting(Message::recipient).doesNotContain("C-private-answer");
+	}
+
+	@Test
+	void missingChannelMappingDoesNotPreventAnswerDelivery() {
+		Fixture fixture = fixture(1, true);
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		Answer answer = questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용",
+				AnswerVisibility.CLASS);
+
+		assertThat(answerRepository.findById(answer.getId())).isPresent();
+		assertThat(sender.messages).extracting(Message::recipient).noneMatch(recipient -> recipient.startsWith("C-"));
+	}
+
+	@Test
+	void broadcastsClassAnswerWithQuestionContextWithoutStudentDetails() {
+		Fixture fixture = fixture(1, true);
+		slack.mapChannel("CLASS", fixture.classroomId(), "C-class-answer");
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용", AnswerVisibility.CLASS);
+
+		Message broadcast = sender.messages.stream().filter(message -> message.recipient().equals("C-class-answer"))
+				.findFirst().orElseThrow();
+		assertThat(broadcast.text()).contains("질문 제목", "질문 내용", "답변 내용")
+				.doesNotContain(fixture.student().getEmail(), fixture.student().getName());
+	}
+
+	@Test
+	void broadcastsCampusAnswerToCampusClassChannelsOnly() {
+		Fixture fixture = fixture(1, true);
+		var secondClass = organization.createClassroom(fixture.campusId(), "추가 클래스-" + UUID.randomUUID());
+		var otherCampus = organization.createCampus("다른 캠퍼스-" + UUID.randomUUID());
+		var otherClass = organization.createClassroom(otherCampus.getId(), "다른 클래스-" + UUID.randomUUID());
+		slack.mapChannel("CLASS", fixture.classroomId(), "C-campus-first");
+		slack.mapChannel("CLASS", secondClass.getId(), "C-campus-second");
+		slack.mapChannel("CLASS", otherClass.getId(), "C-other-campus");
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용", AnswerVisibility.CAMPUS);
+
+		assertThat(sender.messages).extracting(Message::recipient)
+				.contains("C-campus-first", "C-campus-second")
+				.doesNotContain("C-other-campus");
+	}
+
+	@Test
+	void broadcastsCampusAnswerToConfiguredCampusChannel() {
+		Fixture fixture = fixture(1, true);
+		slack.mapChannel("CAMPUS", fixture.campusId(), "C-campus-wide");
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용", AnswerVisibility.CAMPUS);
+
+		assertThat(sender.messages).extracting(Message::recipient).contains("C-campus-wide");
+	}
+
+	@Test
+	void broadcastsGlobalAnswerToAllConfiguredTargetsOnce() {
+		Fixture fixture = fixture(1, true);
+		slack.mapChannel("CLASS", fixture.classroomId(), "C-global-class");
+		slack.mapChannel("CAMPUS", fixture.campusId(), "C-global-campus");
+		slack.mapChannel("GLOBAL", null, "C-global-all");
+		Question question = questions.create(fixture.student().getId(), fixture.campusId(), fixture.classroomId(),
+				"백엔드", "질문 제목", "질문 내용");
+		sender.messages.clear();
+
+		questions.answer(question.getId(), fixture.professors().get(0).getId(), "답변 내용", AnswerVisibility.GLOBAL);
+
+		assertThat(sender.messages).extracting(Message::recipient)
+				.contains("C-global-class", "C-global-campus", "C-global-all");
+		assertThat(sender.messages.stream().filter(message -> message.recipient().startsWith("C-")).count()).isEqualTo(3);
 	}
 
 	private Fixture fixture(int professorCount, boolean mapStudent) {

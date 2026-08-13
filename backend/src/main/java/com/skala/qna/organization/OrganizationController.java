@@ -96,7 +96,7 @@ public class OrganizationController {
 	@PutMapping("/users/{id}")
 	@PreAuthorize("hasRole('ADMIN')")
 	public UserResponse updateUser(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
-		return UserResponse.from(organization.updateUser(id, request.name(), request.email(), request.role(), request.password()));
+		return UserResponse.from(organization.updateUser(id, request.name(), request.email(), request.role(), request.password(), request.active()));
 	}
 
 	@DeleteMapping("/users/{id}")
@@ -153,7 +153,7 @@ public class OrganizationController {
 	}
 
 	public record UpdateUserRequest(@NotBlank String name, @NotBlank @Email String email, @NotNull UserRole role,
-			@Size(min = 8, max = 128) String password) {
+			@Size(min = 8, max = 128) String password, Boolean active) {
 	}
 
 	public record EnrollmentRequest(@NotNull Long campusId, @NotNull Long classroomId) {
@@ -174,9 +174,9 @@ public class OrganizationController {
 		}
 	}
 
-	public record UserResponse(Long id, String name, String email, UserRole role) {
+	public record UserResponse(Long id, String name, String email, UserRole role, boolean active) {
 		static UserResponse from(User user) {
-			return new UserResponse(user.getId(), user.getName(), user.getEmail(), user.getRole());
+			return new UserResponse(user.getId(), user.getName(), user.getEmail(), user.getRole(), user.isActive());
 		}
 	}
 

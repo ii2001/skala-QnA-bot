@@ -9,9 +9,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -45,6 +48,17 @@ public class SlackController {
 		return UserMappingResponse.from(slack.mapUser(request.userId(), request.slackUserId()));
 	}
 
+	@GetMapping("/user-mappings")
+	public List<UserMappingResponse> userMappings() {
+		return slack.userMappings().stream().map(UserMappingResponse::from).toList();
+	}
+
+	@DeleteMapping("/user-mappings/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteUserMapping(@PathVariable Long id) {
+		slack.deleteUserMapping(id);
+	}
+
 	@GetMapping("/user-mappings/{userId}")
 	public UserMappingResponse userMapping(@PathVariable Long userId) {
 		return slack.userMapping(userId).map(UserMappingResponse::from)
@@ -56,6 +70,19 @@ public class SlackController {
 	public ChannelMappingResponse mapChannel(@Valid @RequestBody ChannelMappingRequest request) {
 		return ChannelMappingResponse.from(
 				slack.mapChannel(request.scopeType(), request.scopeId(), request.slackChannelId()));
+	}
+
+	@PutMapping("/channel-mappings/{id}")
+	public ChannelMappingResponse updateChannel(@PathVariable Long id,
+			@Valid @RequestBody ChannelMappingRequest request) {
+		return ChannelMappingResponse.from(
+				slack.updateChannel(id, request.scopeType(), request.scopeId(), request.slackChannelId()));
+	}
+
+	@DeleteMapping("/channel-mappings/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteChannel(@PathVariable Long id) {
+		slack.deleteChannel(id);
 	}
 
 	@GetMapping("/channel-mappings")

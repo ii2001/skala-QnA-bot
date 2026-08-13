@@ -30,6 +30,9 @@ public class User {
 	@Column(nullable = false, length = 20)
 	private UserRole role;
 
+	@Column(nullable = false)
+	private boolean active;
+
 	protected User() {
 	}
 
@@ -42,6 +45,7 @@ public class User {
 		this.email = email;
 		this.role = role;
 		this.passwordHash = passwordHash;
+		this.active = true;
 	}
 
 	public Long getId() {
@@ -64,14 +68,23 @@ public class User {
 		return passwordHash;
 	}
 
+	public boolean isActive() {
+		return active;
+	}
+
 	public void update(String name, String email, UserRole role) {
 		update(name, email, role, passwordHash);
 	}
 
 	public void update(String name, String email, UserRole role, String passwordHash) {
+		update(name, email, role, passwordHash, active);
+	}
+
+	public void update(String name, String email, UserRole role, String passwordHash, boolean active) {
 		this.name = name;
 		this.email = email;
 		this.role = role;
 		this.passwordHash = passwordHash;
+		this.active = active;
 	}
 }

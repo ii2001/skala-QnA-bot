@@ -71,6 +71,14 @@ class QuestionIntegrationTests {
 	}
 
 	@Test
+	void categoryIsTrimmedBeforeStorage() throws Exception {
+		mockMvc.perform(post("/api/questions").header("Authorization", "Bearer " + studentToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(questionJson(campusId, classroomId).replace("\\\"백엔드\\\"", "\\\" 백엔드 \\\"")))
+				.andExpect(status().isCreated()).andExpect(jsonPath("$.category").value("백엔드"));
+	}
+
+	@Test
 	void invalidEnrollmentAndValidationAreRejected() throws Exception {
 		var otherCampus = organization.createCampus("다른 캠퍼스-" + java.util.UUID.randomUUID());
 		var otherClassroom = organization.createClassroom(otherCampus.getId(), "다른 클래스");

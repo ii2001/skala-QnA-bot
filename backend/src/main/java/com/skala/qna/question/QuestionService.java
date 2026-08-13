@@ -45,7 +45,7 @@ public class QuestionService {
 				|| !enrollment.getClassroom().getId().equals(classroomId)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "등록된 캠퍼스와 클래스만 선택할 수 있습니다.");
 		}
-		return questions.save(new Question(author, enrollment.getCampus(), enrollment.getClassroom(), category, title, content));
+		return questions.save(new Question(author, enrollment.getCampus(), enrollment.getClassroom(), category.trim(), title, content));
 	}
 
 	public List<Question> questions(Long authorId) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
@@ -177,9 +177,12 @@ function App() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [selected, setSelected] = useState<Question | null>(null)
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const sessionRef = useRef(0)
 
   useEffect(() => {
     if (!token || !user || user.role !== 'STUDENT') return
+    let active = true
     Promise.all([
       request<Enrollment>(`/api/students/${user.id}/enrollment`, token),
       request<Campus[]>('/api/campuses', token),
@@ -190,12 +193,14 @@ function App() {
           `/api/campuses/${nextEnrollment.campusId}/classrooms`,
           token,
         )
+        if (!active) return
         setEnrollment(nextEnrollment)
         setCampus(campuses.find(({ id }) => id === nextEnrollment.campusId) ?? null)
         setClassroom(classrooms.find(({ id }) => id === nextEnrollment.classroomId) ?? null)
         setQuestions(nextQuestions)
       })
-      .catch((reason: Error) => setError(reason.message))
+      .catch((reason: Error) => { if (active) setError(reason.message) })
+    return () => { active = false }
   }, [token, user])
 
   async function login(event: FormEvent<HTMLFormElement>) {
@@ -217,8 +222,10 @@ function App() {
 
   async function createQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!enrollment) return
+    if (!enrollment || submitting) return
+    const session = sessionRef.current
     setError('')
+    setSubmitting(true)
     const formElement = event.currentTarget
     const form = new FormData(formElement)
     try {
@@ -232,11 +239,14 @@ function App() {
           content: form.get('content'),
         }),
       })
+      if (session !== sessionRef.current) return
       setQuestions((current) => [question, ...current])
       setSelected(question)
       formElement.reset()
     } catch (reason) {
-      setError((reason as Error).message)
+      if (session === sessionRef.current) setError((reason as Error).message)
+    } finally {
+      if (session === sessionRef.current) setSubmitting(false)
     }
   }
 
@@ -250,8 +260,16 @@ function App() {
   }
 
   function logout() {
+    sessionRef.current += 1
     setToken('')
     setUser(null)
+    setEnrollment(null)
+    setCampus(null)
+    setClassroom(null)
+    setQuestions([])
+    setSelected(null)
+    setError('')
+    setSubmitting(false)
   }
 
   if (!user) {
@@ -289,7 +307,7 @@ function App() {
             <label>카테고리<input name="category" maxLength={100} required /></label>
             <label>제목<input name="title" maxLength={200} required /></label>
             <label>내용<textarea name="content" rows={7} maxLength={10000} required /></label>
-            <button type="submit" disabled={!enrollment}>질문 등록</button>
+            <button type="submit" disabled={!enrollment || submitting}>{submitting ? '등록 중...' : '질문 등록'}</button>
           </form>
         </section>
 

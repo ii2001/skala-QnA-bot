@@ -16,6 +16,7 @@ import com.skala.qna.organization.ProfessorAssignmentRepository;
 import com.skala.qna.organization.User;
 import com.skala.qna.organization.UserRepository;
 import com.skala.qna.organization.UserRole;
+import com.skala.qna.slack.SlackNotificationService;
 
 @Service
 @Transactional(readOnly = true)
@@ -26,14 +27,16 @@ public class QuestionService {
 	private final EnrollmentRepository enrollments;
 	private final ProfessorAssignmentRepository assignments;
 	private final AnswerRepository answers;
+	private final SlackNotificationService notifications;
 
 	public QuestionService(QuestionRepository questions, UserRepository users, EnrollmentRepository enrollments,
-			ProfessorAssignmentRepository assignments, AnswerRepository answers) {
+			ProfessorAssignmentRepository assignments, AnswerRepository answers, SlackNotificationService notifications) {
 		this.questions = questions;
 		this.users = users;
 		this.enrollments = enrollments;
 		this.assignments = assignments;
 		this.answers = answers;
+		this.notifications = notifications;
 	}
 
 	@Transactional
@@ -47,7 +50,9 @@ public class QuestionService {
 				|| !enrollment.getClassroom().getId().equals(classroomId)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "등록된 캠퍼스와 클래스만 선택할 수 있습니다.");
 		}
-		return questions.save(new Question(author, enrollment.getCampus(), enrollment.getClassroom(), category.trim(), title, content));
+		Question question = questions.save(new Question(author, enrollment.getCampus(), enrollment.getClassroom(), category.trim(), title, content));
+		notifications.notifyNewQuestion(question);
+		return question;
 	}
 
 	public List<Question> questions(Long authorId) {
@@ -99,6 +104,7 @@ public class QuestionService {
 		}
 		Answer answer = answers.save(new Answer(question, professor, content, visibility));
 		question.markAnswered();
+		notifications.notifyAnswer(answer);
 		return answer;
 	}
 

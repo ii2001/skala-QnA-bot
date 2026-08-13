@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -66,6 +67,11 @@ public class SlackIntegrationService {
 
 	public SlackSendResult sendMessage(String slackChannelId, String text) {
 		return messageSender.send(slackChannelId, text);
+	}
+
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	public SlackSendResult sendDirectMessage(String slackUserId, String text) {
+		return messageSender.sendDirectMessage(slackUserId, text);
 	}
 
 	private String required(String value, String field) {

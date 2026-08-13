@@ -49,6 +49,17 @@ class SlackWebApiMessageSenderTests {
 		assertThat(httpClient.request.bodyPublisher().orElseThrow().contentLength()).isGreaterThan(0);
 	}
 
+	@Test
+	void opensConversationBeforeSendingDirectMessage() {
+		StubHttpClient httpClient = new StubHttpClient("{\"ok\":true,\"channel\":{\"id\":\"D123\"}}");
+
+		SlackSendResult result = new SlackWebApiMessageSender("xoxb-test", httpClient)
+				.sendDirectMessage("U123", "DM 테스트");
+
+		assertThat(result.sent()).isTrue();
+		assertThat(result.channelId()).isEqualTo("D123");
+	}
+
 	private static final class StubHttpClient extends HttpClient {
 
 		private final HttpResponse<String> response;

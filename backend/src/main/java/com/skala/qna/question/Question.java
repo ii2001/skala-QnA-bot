@@ -105,6 +105,10 @@ public class Question {
 		return status;
 	}
 
+	public void markAnswered() {
+		this.status = QuestionStatus.ANSWERED;
+	}
+
 	public QuestionSource getSource() {
 		return source;
 	}
@@ -115,7 +119,7 @@ public class Question {
 }
 
 enum QuestionStatus {
-	OPEN
+	OPEN, ANSWERED
 }
 
 enum QuestionSource {

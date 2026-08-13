@@ -25,13 +25,15 @@ public class QuestionService {
 	private final UserRepository users;
 	private final EnrollmentRepository enrollments;
 	private final ProfessorAssignmentRepository assignments;
+	private final AnswerRepository answers;
 
 	public QuestionService(QuestionRepository questions, UserRepository users, EnrollmentRepository enrollments,
-			ProfessorAssignmentRepository assignments) {
+			ProfessorAssignmentRepository assignments, AnswerRepository answers) {
 		this.questions = questions;
 		this.users = users;
 		this.enrollments = enrollments;
 		this.assignments = assignments;
+		this.answers = answers;
 	}
 
 	@Transactional
@@ -79,6 +81,25 @@ public class QuestionService {
 			throw questionNotFound();
 		}
 		return questions.findByIdAndClassroomIdIn(id, classroomIds).orElseThrow(this::questionNotFound);
+	}
+
+	@Transactional
+	public Answer answer(Long questionId, Long professorId, String content, AnswerVisibility visibility) {
+		User professor = users.findById(professorId)
+				.filter(user -> user.getRole() == UserRole.PROFESSOR)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "교수만 답변을 등록할 수 있습니다."));
+		Set<Long> classroomIds = assignedClassroomIds(professorId);
+		if (classroomIds.isEmpty()) {
+			throw questionNotFound();
+		}
+		Question question = questions.findByIdAndClassroomIdIn(questionId, classroomIds)
+				.orElseThrow(this::questionNotFound);
+		if (question.getStatus() != QuestionStatus.OPEN || answers.existsByQuestionId(questionId)) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 답변이 등록된 질문입니다.");
+		}
+		Answer answer = answers.save(new Answer(question, professor, content, visibility));
+		question.markAnswered();
+		return answer;
 	}
 
 	private Set<Long> assignedClassroomIds(Long professorId) {

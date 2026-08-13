@@ -34,6 +34,9 @@ class ProfessorQuestionIntegrationTests {
 	@Autowired
 	private QuestionRepository questions;
 
+	@Autowired
+	private AnswerRepository answers;
+
 	private String professorToken;
 	private String studentToken;
 	private Question assignedQuestion;
@@ -41,6 +44,7 @@ class ProfessorQuestionIntegrationTests {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		answers.deleteAll();
 		questions.deleteAll();
 		String suffix = java.util.UUID.randomUUID().toString();
 		var assignedCampus = organization.createCampus("담당 캠퍼스-" + suffix);

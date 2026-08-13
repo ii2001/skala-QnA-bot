@@ -49,6 +49,10 @@ SKALA 학생과 교수자의 질문·답변을 관리하는 모듈러 모놀리�
 
 5. 브라우저에서 `http://localhost:5173`을 열고 백엔드 연결 상태가 `정상`인지 확인합니다. 백엔드 상태는 `http://localhost:8080/actuator/health`에서도 확인할 수 있습니다.
 
+## 인증
+
+`POST /api/auth/login`에 이메일과 비밀번호를 보내면 Bearer JWT를 발급합니다. `/api/auth/login`과 `/actuator/health`를 제외한 API는 `Authorization: Bearer <token>` 헤더가 필요합니다. 사용자 생성 시 비밀번호는 8~128자여야 하며, JWT 서명키는 `.env`의 `JWT_SECRET`에 32바이트 이상으로 설정합니다.
+
 ## 검증
 
 ```bash

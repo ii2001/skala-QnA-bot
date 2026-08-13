@@ -3,6 +3,7 @@ package com.skala.qna.organization;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,14 +17,17 @@ public class OrganizationService {
 	private final UserRepository users;
 	private final EnrollmentRepository enrollments;
 	private final ProfessorAssignmentRepository assignments;
+	private final PasswordEncoder passwordEncoder;
 
 	public OrganizationService(CampusRepository campuses, ClassroomRepository classrooms, UserRepository users,
-			EnrollmentRepository enrollments, ProfessorAssignmentRepository assignments) {
+			EnrollmentRepository enrollments, ProfessorAssignmentRepository assignments,
+			PasswordEncoder passwordEncoder) {
 		this.campuses = campuses;
 		this.classrooms = classrooms;
 		this.users = users;
 		this.enrollments = enrollments;
 		this.assignments = assignments;
+		this.passwordEncoder = passwordEncoder;
 	}
 
 	public List<Campus> campuses() {
@@ -75,13 +79,23 @@ public class OrganizationService {
 
 	@Transactional
 	public User createUser(String name, String email, UserRole role) {
-		return users.save(new User(name, email, role));
+		return createUser(name, email, role, null);
+	}
+
+	@Transactional
+	public User createUser(String name, String email, UserRole role, String rawPassword) {
+		return users.save(new User(name, email, role, hash(rawPassword)));
 	}
 
 	@Transactional
 	public User updateUser(Long id, String name, String email, UserRole role) {
+		return updateUser(id, name, email, role, null);
+	}
+
+	@Transactional
+	public User updateUser(Long id, String name, String email, UserRole role, String rawPassword) {
 		User user = user(id);
-		user.update(name, email, role);
+		user.update(name, email, role, rawPassword == null ? user.getPasswordHash() : hash(rawPassword));
 		return user;
 	}
 
@@ -161,5 +175,9 @@ public class OrganizationService {
 
 	private ResponseStatusException badRequest(String message) {
 		return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+	}
+
+	private String hash(String rawPassword) {
+		return rawPassword == null ? null : passwordEncoder.encode(rawPassword);
 	}
 }

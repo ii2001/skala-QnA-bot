@@ -1,6 +1,9 @@
 package com.skala.qna.question;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -9,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.skala.qna.organization.Enrollment;
 import com.skala.qna.organization.EnrollmentRepository;
+import com.skala.qna.organization.ProfessorAssignmentRepository;
 import com.skala.qna.organization.User;
 import com.skala.qna.organization.UserRepository;
 import com.skala.qna.organization.UserRole;
@@ -20,11 +24,14 @@ public class QuestionService {
 	private final QuestionRepository questions;
 	private final UserRepository users;
 	private final EnrollmentRepository enrollments;
+	private final ProfessorAssignmentRepository assignments;
 
-	public QuestionService(QuestionRepository questions, UserRepository users, EnrollmentRepository enrollments) {
+	public QuestionService(QuestionRepository questions, UserRepository users, EnrollmentRepository enrollments,
+			ProfessorAssignmentRepository assignments) {
 		this.questions = questions;
 		this.users = users;
 		this.enrollments = enrollments;
+		this.assignments = assignments;
 	}
 
 	@Transactional
@@ -48,5 +55,50 @@ public class QuestionService {
 	public Question question(Long id, Long authorId) {
 		return questions.findByIdAndAuthorId(id, authorId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "질문을 찾을 수 없습니다."));
+	}
+
+	public List<Question> professorQuestions(Long professorId, String status, Long campusId, Long classroomId,
+			String category) {
+		QuestionStatus requestedStatus = parseStatus(status);
+		Set<Long> classroomIds = assignedClassroomIds(professorId);
+		if (classroomIds.isEmpty()) {
+			return List.of();
+		}
+		String requestedCategory = category == null || category.isBlank() ? null : category.trim();
+		return questions.findAllByClassroomIdInOrderByCreatedAtDesc(classroomIds).stream()
+				.filter(question -> requestedStatus == null || question.getStatus() == requestedStatus)
+				.filter(question -> campusId == null || question.getCampus().getId().equals(campusId))
+				.filter(question -> classroomId == null || question.getClassroom().getId().equals(classroomId))
+				.filter(question -> requestedCategory == null || question.getCategory().equals(requestedCategory))
+				.toList();
+	}
+
+	public Question professorQuestion(Long id, Long professorId) {
+		Set<Long> classroomIds = assignedClassroomIds(professorId);
+		if (classroomIds.isEmpty()) {
+			throw questionNotFound();
+		}
+		return questions.findByIdAndClassroomIdIn(id, classroomIds).orElseThrow(this::questionNotFound);
+	}
+
+	private Set<Long> assignedClassroomIds(Long professorId) {
+		return assignments.findAllByProfessorId(professorId).stream()
+				.map(assignment -> assignment.getClassroom().getId())
+				.collect(Collectors.toSet());
+	}
+
+	private QuestionStatus parseStatus(String status) {
+		if (status == null || status.isBlank()) {
+			return null;
+		}
+		try {
+			return QuestionStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "유효하지 않은 질문 상태입니다.");
+		}
+	}
+
+	private ResponseStatusException questionNotFound() {
+		return new ResponseStatusException(HttpStatus.NOT_FOUND, "질문을 찾을 수 없습니다.");
 	}
 }

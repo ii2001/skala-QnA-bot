@@ -64,6 +64,8 @@ SLACK_ALLOWED_TEAM_ID=T0123456789
 
 프론트엔드의 `Slack으로 로그인` 버튼은 백엔드 `/oauth2/authorization/slack`에서 시작하고, 검증된 Slack identity를 기존 내부 JWT로 교환한 뒤 프론트엔드로 돌아옵니다. 이메일·비밀번호 로그인은 개발·관리자 fallback으로 유지합니다.
 
+최초 ADMIN은 `ADMIN_BOOTSTRAP_EMAIL`과 `ADMIN_BOOTSTRAP_PASSWORD`를 배포 환경 secret으로 설정해 애플리케이션 시작 시 한 번 생성·승격합니다. 두 값이 비어 있으면 bootstrap은 비활성화되며, 값은 저장소에 기록하지 않습니다. 이후 ADMIN은 `/api/admin/staff-access`에서 교수·운영진 Slack 이메일 허용 목록을 관리합니다.
+
 ## 검증
 
 ```bash

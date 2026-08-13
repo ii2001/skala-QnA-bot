@@ -100,6 +100,13 @@ public class OrganizationService {
 	}
 
 	@Transactional
+	public User bootstrapAdmin(String name, String email, String rawPassword) {
+		User user = users.findByEmail(email).orElseGet(() -> new User(name, email, UserRole.ADMIN));
+		user.update(name, email, UserRole.ADMIN, passwordEncoder.encode(rawPassword));
+		return users.save(user);
+	}
+
+	@Transactional
 	public void deleteUser(Long id) {
 		users.delete(user(id));
 	}

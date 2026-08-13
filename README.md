@@ -64,3 +64,24 @@ docker compose config --quiet
 ## 환경변수와 비밀정보
 
 `.env`와 로컬 Spring 설정 파일은 Git에서 제외됩니다. 실제 비밀번호, API 키, JWT 비밀키, Slack 토큰은 예제 파일이나 소스 코드에 작성하지 않고 환경변수로만 주입합니다.
+
+## Slack 개발 환경
+
+1. Slack API에서 개발용 앱을 만들고 `chat:write` 권한을 추가한 뒤 개발 workspace에 설치합니다.
+2. 발급된 Bot User OAuth Token과 테스트 채널 ID를 `.env`에 입력합니다.
+
+   ```dotenv
+   SLACK_BOT_TOKEN=xoxb-...
+   SLACK_TEST_CHANNEL_ID=C0123456789
+   ```
+
+3. 테스트 채널에 봇을 초대하고 백엔드를 실행합니다. 관리자 JWT로 아래 요청을 보내면 테스트 메시지가 전송됩니다.
+
+   ```bash
+   curl -X POST http://localhost:8080/api/slack/test-message \
+     -H 'Authorization: Bearer <admin-jwt>' \
+     -H 'Content-Type: application/json' \
+     -d '{"text":"SKALA Q&A Slack 연동 테스트"}'
+   ```
+
+토큰이나 채널 ID가 없으면 애플리케이션은 정상적으로 시작하고, 테스트 요청은 원인을 담은 `503 Service Unavailable`을 반환합니다. 시스템 사용자·Slack 사용자와 범위·Slack 채널 연결은 관리자 전용 `/api/slack/user-mappings`, `/api/slack/channel-mappings`에서 관리합니다.

@@ -16,16 +16,19 @@ public class OrganizationService {
 	private final ClassroomRepository classrooms;
 	private final UserRepository users;
 	private final EnrollmentRepository enrollments;
+	private final EnrollmentAuditLogRepository enrollmentAuditLogs;
 	private final ProfessorAssignmentRepository assignments;
 	private final PasswordEncoder passwordEncoder;
 
 	public OrganizationService(CampusRepository campuses, ClassroomRepository classrooms, UserRepository users,
-			EnrollmentRepository enrollments, ProfessorAssignmentRepository assignments,
+			EnrollmentRepository enrollments, EnrollmentAuditLogRepository enrollmentAuditLogs,
+			ProfessorAssignmentRepository assignments,
 			PasswordEncoder passwordEncoder) {
 		this.campuses = campuses;
 		this.classrooms = classrooms;
 		this.users = users;
 		this.enrollments = enrollments;
+		this.enrollmentAuditLogs = enrollmentAuditLogs;
 		this.assignments = assignments;
 		this.passwordEncoder = passwordEncoder;
 	}
@@ -125,9 +128,17 @@ public class OrganizationService {
 			throw badRequest("클래스가 선택한 캠퍼스에 속하지 않습니다.");
 		}
 		return enrollments.findByStudentId(studentId).map(enrollment -> {
+			Long previousCampusId = enrollment.getCampus().getId();
+			Long previousClassroomId = enrollment.getClassroom().getId();
 			enrollment.moveTo(campus, classroom);
+			enrollmentAuditLogs.save(new EnrollmentAuditLog(student, previousCampusId, previousClassroomId,
+				campus.getId(), classroom.getId()));
 			return enrollment;
-		}).orElseGet(() -> enrollments.save(new Enrollment(student, campus, classroom)));
+		}).orElseGet(() -> {
+			Enrollment enrollment = enrollments.save(new Enrollment(student, campus, classroom));
+			enrollmentAuditLogs.save(new EnrollmentAuditLog(student, null, null, campus.getId(), classroom.getId()));
+			return enrollment;
+		});
 	}
 
 	@Transactional

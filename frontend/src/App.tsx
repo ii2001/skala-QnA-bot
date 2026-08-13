@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
@@ -17,6 +17,16 @@ type Question = {
   status: string
   createdAt: string
 }
+type ProfessorQuestion = Question & {
+  authorId: number
+  campusId: number
+  campusName: string
+  classroomId: number
+  classroomName: string
+  source: string
+}
+type ProfessorDashboardResponse = { questions: ProfessorQuestion[]; unansweredCount: number }
+type DashboardFilters = { status: string; campusId: string; classroomId: string; category: string }
 
 async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -33,6 +43,131 @@ async function request<T>(path: string, token?: string, init?: RequestInit): Pro
   return response.json() as Promise<T>
 }
 
+function statusLabel(status: string) {
+  return status === 'OPEN' ? '미답변' : status
+}
+
+function ProfessorDashboard({ token, user, onLogout }: { token: string; user: User; onLogout: () => void }) {
+  const [dashboard, setDashboard] = useState<ProfessorDashboardResponse | null>(null)
+  const [allQuestions, setAllQuestions] = useState<ProfessorQuestion[]>([])
+  const [filters, setFilters] = useState<DashboardFilters>({ status: '', campusId: '', classroomId: '', category: '' })
+  const [selected, setSelected] = useState<ProfessorQuestion | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [error, setError] = useState('')
+  const hasFilters = Object.values(filters).some(Boolean)
+
+  const campuses = useMemo(() => Array.from(new Map(allQuestions.map((question) => [
+    question.campusId,
+    { id: question.campusId, name: question.campusName },
+  ])).values()), [allQuestions])
+  const classrooms = useMemo(() => Array.from(new Map(allQuestions
+    .filter((question) => !filters.campusId || String(question.campusId) === filters.campusId)
+    .map((question) => [question.classroomId, { id: question.classroomId, name: question.classroomName }])).values()),
+  [allQuestions, filters.campusId])
+  const categories = useMemo(() => Array.from(new Set(allQuestions.map((question) => question.category))).sort(), [allQuestions])
+
+  useEffect(() => {
+    let active = true
+    const params = new URLSearchParams()
+    if (filters.status) params.set('status', filters.status)
+    if (filters.campusId) params.set('campusId', filters.campusId)
+    if (filters.classroomId) params.set('classroomId', filters.classroomId)
+    if (filters.category) params.set('category', filters.category)
+    setLoading(true)
+    setError('')
+    request<ProfessorDashboardResponse>(`/api/professor/questions${params.size ? `?${params}` : ''}`, token)
+      .then((result) => {
+        if (!active) return
+        setDashboard(result)
+        if (!hasFilters) setAllQuestions(result.questions)
+      })
+      .catch((reason: Error) => { if (active) setError(reason.message) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [token, filters.status, filters.campusId, filters.classroomId, filters.category, hasFilters])
+
+  async function openQuestion(question: ProfessorQuestion) {
+    setSelected(question)
+    setDetailLoading(true)
+    setError('')
+    try {
+      setSelected(await request<ProfessorQuestion>(`/api/professor/questions/${question.id}`, token))
+    } catch (reason) {
+      setError((reason as Error).message)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  function updateFilter(name: keyof DashboardFilters, value: string) {
+    setFilters((current) => ({ ...current, [name]: value, ...(name === 'campusId' ? { classroomId: '' } : {}) }))
+  }
+
+  return (
+    <main className="app-shell">
+      <header>
+        <div><p className="eyebrow">SKALA Q&amp;A</p><h1>{user.name}님의 대시보드</h1></div>
+        <button className="secondary" onClick={onLogout}>로그아웃</button>
+      </header>
+
+      {error && <p className="error" role="alert">{error}</p>}
+
+      <section className="dashboard-summary" aria-label="질문 요약">
+        <div><span>미답변 질문</span><strong>{dashboard?.unansweredCount ?? 0}</strong></div>
+        <div><span>현재 질문</span><strong>{dashboard?.questions.length ?? 0}</strong></div>
+      </section>
+
+      <section>
+        <h2>질문 필터</h2>
+        <div className="filters">
+          <label>상태<select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
+            <option value="">전체 상태</option><option value="OPEN">미답변</option>
+          </select></label>
+          <label>캠퍼스<select value={filters.campusId} onChange={(event) => updateFilter('campusId', event.target.value)}>
+            <option value="">전체 캠퍼스</option>{campuses.map((campus) => <option key={campus.id} value={campus.id}>{campus.name}</option>)}
+          </select></label>
+          <label>클래스<select value={filters.classroomId} onChange={(event) => updateFilter('classroomId', event.target.value)}>
+            <option value="">전체 클래스</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}
+          </select></label>
+          <label>카테고리<select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}>
+            <option value="">전체 카테고리</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>담당 질문</h2>
+        {loading ? <p className="empty" aria-live="polite">질문을 불러오는 중입니다.</p> : dashboard?.questions.length === 0 ? (
+          <p className="empty">{hasFilters ? '조건에 맞는 질문이 없습니다.' : '담당 질문이 없습니다.'}</p>
+        ) : (
+          <ul className="question-list">
+            {dashboard?.questions.map((question) => (
+              <li key={question.id}>
+                <button type="button" onClick={() => openQuestion(question)}>
+                  <span>{question.campusName} · {question.classroomName}</span>
+                  <strong>{question.title}</strong>
+                  <time>{question.category} · {statusLabel(question.status)} · {new Date(question.createdAt).toLocaleString('ko-KR')}</time>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {selected && (
+        <dialog open aria-labelledby="professor-question-title" aria-busy={detailLoading}>
+          <button type="button" className="close" aria-label="닫기" onClick={() => setSelected(null)}>×</button>
+          <p className="eyebrow">{selected.campusName} · {selected.classroomName}</p>
+          <h2 id="professor-question-title">{selected.title}</h2>
+          <p className="question-meta">카테고리: {selected.category} · 상태: {statusLabel(selected.status)}</p>
+          {detailLoading ? <p>상세 내용을 불러오는 중입니다.</p> : <p className="question-content">{selected.content}</p>}
+        </dialog>
+      )}
+    </main>
+  )
+}
+
 function App() {
   const [token, setToken] = useState('')
   const [user, setUser] = useState<User | null>(null)
@@ -44,7 +179,7 @@ function App() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!token || !user) return
+    if (!token || !user || user.role !== 'STUDENT') return
     Promise.all([
       request<Enrollment>(`/api/students/${user.id}/enrollment`, token),
       request<Campus[]>('/api/campuses', token),
@@ -72,7 +207,7 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ email: form.get('email'), password: form.get('password') }),
       })
-      if (result.user.role !== 'STUDENT') throw new Error('학생 계정으로 로그인해 주세요.')
+      if (result.user.role !== 'STUDENT' && result.user.role !== 'PROFESSOR') throw new Error('학생 또는 교수 계정으로 로그인해 주세요.')
       setToken(result.accessToken)
       setUser(result.user)
     } catch (reason) {
@@ -114,11 +249,16 @@ function App() {
     }
   }
 
+  function logout() {
+    setToken('')
+    setUser(null)
+  }
+
   if (!user) {
     return (
       <main className="login-card">
         <p className="eyebrow">SKALA Q&amp;A</p>
-        <h1>학생 로그인</h1>
+        <h1>로그인</h1>
         <form onSubmit={login}>
           <label>이메일<input name="email" type="email" autoComplete="email" required /></label>
           <label>비밀번호<input name="password" type="password" autoComplete="current-password" required /></label>
@@ -129,11 +269,13 @@ function App() {
     )
   }
 
+  if (user.role === 'PROFESSOR') return <ProfessorDashboard token={token} user={user} onLogout={logout} />
+
   return (
     <main className="app-shell">
       <header>
         <div><p className="eyebrow">SKALA Q&amp;A</p><h1>{user.name}님의 질문</h1></div>
-        <button className="secondary" onClick={() => { setToken(''); setUser(null) }}>로그아웃</button>
+        <button className="secondary" onClick={logout}>로그아웃</button>
       </header>
 
       {error && <p className="error" role="alert">{error}</p>}

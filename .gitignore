@@ -1,0 +1,58 @@
+# =========================
+# Secrets
+# =========================
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+**/application-secret.yml
+**/application-secret.yaml
+**/application-secret.properties
+**/secrets/
+*.key
+*.pem
+
+# =========================
+# Java / Spring Boot
+# =========================
+backend/.gradle/
+backend/build/
+*.class
+*.jar
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# =========================
+# Node / Frontend
+# =========================
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+
+# =========================
+# Python / AI
+# =========================
+ai/.venv/
+ai/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# =========================
+# IDE / OS
+# =========================
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# =========================
+# Generated files
+# =========================
+uploads/
+generated-reports/
+temp/
+*.pdf

@@ -16,6 +16,8 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 
 @Configuration
 @EnableMethodSecurity
@@ -37,18 +39,24 @@ public class SecurityConfiguration {
 	}
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter)
+	SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter,
+			ObjectProvider<ClientRegistrationRepository> clientRegistrations,
+			SlackLoginSuccessHandler slackLoginSuccessHandler)
 			throws Exception {
 		AuthenticationEntryPoint unauthorized = new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED);
 		AccessDeniedHandler forbidden = (request, response, exception) -> response.sendError(HttpStatus.FORBIDDEN.value());
 		http.csrf(csrf -> csrf.disable())
 			.cors(Customizer.withDefaults())
-			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
 			.exceptionHandling(errors -> errors.authenticationEntryPoint(unauthorized).accessDeniedHandler(forbidden))
 			.authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-					.requestMatchers("/api/auth/login", "/actuator/health").permitAll()
+					.requestMatchers("/api/auth/login", "/actuator/health", "/oauth2/**", "/login/**").permitAll()
 					.anyRequest().authenticated())
 			.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+		if (clientRegistrations.getIfAvailable() != null) {
+			http.oauth2Login(oauth -> oauth.successHandler(slackLoginSuccessHandler)
+					.failureHandler(slackLoginSuccessHandler::onAuthenticationFailure));
+		}
 		return http.build();
 	}
 }

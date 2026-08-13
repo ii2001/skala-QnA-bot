@@ -5,9 +5,11 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import com.skala.qna.organization.User;
 
@@ -25,6 +27,11 @@ public class AuthController {
 	public LoginResponse login(@Valid @RequestBody LoginRequest request) {
 		AuthService.LoginResult result = authService.login(request.email(), request.password());
 		return LoginResponse.from(result);
+	}
+
+	@GetMapping("/me")
+	public UserResponse me(@AuthenticationPrincipal UserPrincipal principal) {
+		return UserResponse.from(authService.user(principal.userId()));
 	}
 
 	public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {

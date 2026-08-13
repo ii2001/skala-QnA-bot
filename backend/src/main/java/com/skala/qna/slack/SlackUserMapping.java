@@ -27,11 +27,19 @@ public class SlackUserMapping {
 	@Column(name = "slack_user_id", nullable = false, unique = true, length = 50)
 	private String slackUserId;
 
+	@Column(name = "slack_team_id", nullable = false, length = 50)
+	private String slackTeamId;
+
 	protected SlackUserMapping() {
 	}
 
 	public SlackUserMapping(User user, String slackUserId) {
+		this(user, "legacy", slackUserId);
+	}
+
+	public SlackUserMapping(User user, String slackTeamId, String slackUserId) {
 		this.user = user;
+		this.slackTeamId = slackTeamId;
 		this.slackUserId = slackUserId;
 	}
 
@@ -47,7 +55,16 @@ public class SlackUserMapping {
 		return slackUserId;
 	}
 
+	public String getSlackTeamId() {
+		return slackTeamId;
+	}
+
 	public void updateSlackUserId(String slackUserId) {
+		this.slackUserId = slackUserId;
+	}
+
+	public void updateIdentity(String slackTeamId, String slackUserId) {
+		this.slackTeamId = slackTeamId;
 		this.slackUserId = slackUserId;
 	}
 }

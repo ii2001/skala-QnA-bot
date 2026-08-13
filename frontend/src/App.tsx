@@ -231,6 +231,21 @@ function App() {
   const sessionRef = useRef(0)
 
   useEffect(() => {
+    const callback = new URLSearchParams(window.location.hash.slice(1))
+    const callbackToken = callback.get('access_token')
+    const callbackError = callback.get('auth_error')
+    if (!callbackToken && !callbackError) return
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    if (callbackError) {
+      setError(callbackError)
+      return
+    }
+    request<User>('/api/auth/me', callbackToken ?? '')
+      .then((nextUser) => { setToken(callbackToken ?? ''); setUser(nextUser) })
+      .catch((reason: Error) => setError(reason.message))
+  }, [])
+
+  useEffect(() => {
     if (!token || !user || user.role !== 'STUDENT') return
     let active = true
     Promise.all([
@@ -327,11 +342,15 @@ function App() {
       <main className="login-card">
         <p className="eyebrow">SKALA Q&amp;A</p>
         <h1>로그인</h1>
+        <a className="slack-login" href={`${API_URL}/oauth2/authorization/slack`}>Slack으로 로그인</a>
+        <details>
+          <summary>개발·관리자용 이메일 로그인</summary>
         <form onSubmit={login}>
           <label>이메일<input name="email" type="email" autoComplete="email" required /></label>
           <label>비밀번호<input name="password" type="password" autoComplete="current-password" required /></label>
           <button type="submit">로그인</button>
         </form>
+        </details>
         {error && <p className="error" role="alert">{error}</p>}
       </main>
     )

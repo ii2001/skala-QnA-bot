@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 public class SlackWebApiMessageSender implements SlackMessageSender {
 
 	private static final URI CHAT_POST_MESSAGE = URI.create("https://slack.com/api/chat.postMessage");
+	private static final URI OPEN_CONVERSATION = URI.create("https://slack.com/api/conversations.open");
 	private static final Pattern JSON_FIELD = Pattern.compile("\\\"([^\\\"]+)\\\"\\s*:\\s*(?:\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"|(true|false|null))");
 
 	private final String botToken;
@@ -35,17 +36,38 @@ public class SlackWebApiMessageSender implements SlackMessageSender {
 
 	@Override
 	public SlackSendResult send(String slackChannelId, String text) {
-		if (slackChannelId == null || slackChannelId.isBlank() || text == null || text.isBlank()) {
-			throw new IllegalArgumentException("Slack 채널 ID와 메시지는 필수입니다.");
-		}
+		validateMessageTarget(slackChannelId, text, "Slack 채널 ID");
+		return postMessage(slackChannelId, text);
+	}
+
+	@Override
+	public SlackSendResult sendDirectMessage(String slackUserId, String text) {
+		validateMessageTarget(slackUserId, text, "Slack 사용자 ID");
 		if (botToken.isBlank()) {
 			return SlackSendResult.unavailable("SLACK_BOT_TOKEN이 설정되지 않았습니다.");
 		}
+		SlackSendResult conversation = post(OPEN_CONVERSATION,
+				"{\"users\":\"" + escapeJson(slackUserId) + "\"}", null);
+		if (!conversation.sent() || conversation.channelId() == null) {
+			return conversation.sent()
+					? SlackSendResult.unavailable("Slack DM 채널을 열었지만 채널 ID가 없습니다.")
+					: conversation;
+		}
+		return postMessage(conversation.channelId(), text);
+	}
 
+	private SlackSendResult postMessage(String slackChannelId, String text) {
+		if (botToken.isBlank()) {
+			return SlackSendResult.unavailable("SLACK_BOT_TOKEN이 설정되지 않았습니다.");
+		}
+		return post(CHAT_POST_MESSAGE,
+				"{\"channel\":\"" + escapeJson(slackChannelId) + "\",\"text\":\"" + escapeJson(text) + "\"}",
+				slackChannelId);
+	}
+
+	private SlackSendResult post(URI endpoint, String body, String fallbackChannelId) {
 		try {
-			String body = "{\"channel\":\"" + escapeJson(slackChannelId) + "\",\"text\":\""
-					+ escapeJson(text) + "\"}";
-			HttpRequest request = HttpRequest.newBuilder(CHAT_POST_MESSAGE)
+			HttpRequest request = HttpRequest.newBuilder(endpoint)
 				.header("Authorization", "Bearer " + botToken)
 				.header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
 				.POST(HttpRequest.BodyPublishers.ofString(body))
@@ -63,12 +85,20 @@ public class SlackWebApiMessageSender implements SlackMessageSender {
 				return SlackSendResult.unavailable("Slack Web API 오류: "
 						+ jsonField(response.body(), "error").orElse("알 수 없는 오류"));
 			}
-			return SlackSendResult.sent(slackChannelId, jsonField(response.body(), "ts").orElse(null));
+			String channelId = fallbackChannelId == null ? jsonField(response.body(), "id").orElse(null)
+					: fallbackChannelId;
+			return SlackSendResult.sent(channelId, jsonField(response.body(), "ts").orElse(null));
 		} catch (IOException exception) {
 			return SlackSendResult.unavailable("Slack Web API 호출에 실패했습니다: " + exception.getMessage());
 		} catch (InterruptedException exception) {
 			Thread.currentThread().interrupt();
 			return SlackSendResult.unavailable("Slack Web API 호출이 중단되었습니다.");
+		}
+	}
+
+	private void validateMessageTarget(String target, String text, String targetName) {
+		if (target == null || target.isBlank() || text == null || text.isBlank()) {
+			throw new IllegalArgumentException(targetName + "와 메시지는 필수입니다.");
 		}
 	}
 

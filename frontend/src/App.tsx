@@ -32,6 +32,7 @@ type StaffAccess = { id: number; email: string; expectedRole: string; active: bo
 type ChannelMapping = { id: number; scopeType: string; scopeId: number | null; slackChannelId: string }
 type UserMapping = { id: number; userId: number; slackUserId: string }
 type Assignment = { id: number; professorId: number; campusId: number; classroomId: number }
+type SearchResult = { id: number; category: string; title: string; questionContent: string; answerContent: string; visibility: string; campusName: string; classroomName: string; createdAt: string }
 
 async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -105,6 +106,23 @@ function StudentOnboarding({ token, userId, campuses, onComplete }: { token: str
 
 function statusLabel(status: string) {
   return status === 'OPEN' ? '미답변' : status === 'ANSWERED' ? '답변 완료' : status
+}
+
+function QnaSearch({ token }: { token: string }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [error, setError] = useState('')
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    const params = new URLSearchParams({ q: query })
+    try {
+      setResults(await request<SearchResult[]>(`/api/qna/search?${params}`, token))
+    } catch (reason) {
+      setError((reason as Error).message)
+    }
+  }
+  return <section className="search-panel"><h2>기존 Q&amp;A 검색</h2><form className="inline-form" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="질문·답변·카테고리 검색" /><button>검색</button></form>{error && <p className="error" role="alert">{error}</p>}{results.length === 0 ? <p className="empty">검색 결과가 없습니다.</p> : <ul className="question-list">{results.map((result) => <li key={result.id}><article className="search-result"><span>{result.campusName} · {result.classroomName} · {result.category}</span><strong>{result.title}</strong><p>{result.answerContent}</p></article></li>)}</ul>}</section>
 }
 
 function ProfessorDashboard({ token, user, onLogout }: { token: string; user: User; onLogout: () => void }) {
@@ -631,6 +649,7 @@ function App() {
 
       {error && <p className="error" role="alert">{error}</p>}
 
+      <QnaSearch token={token} />
       <div className="columns">
         <section>
           <h2>새 질문</h2>

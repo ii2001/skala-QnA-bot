@@ -33,6 +33,9 @@ class QuestionIntegrationTests {
 	@Autowired
 	private QuestionRepository questions;
 
+	@Autowired
+	private AnswerRepository answers;
+
 	private Long studentId;
 	private Long campusId;
 	private Long classroomId;
@@ -40,6 +43,7 @@ class QuestionIntegrationTests {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		answers.deleteAll();
 		questions.deleteAll();
 		String suffix = java.util.UUID.randomUUID().toString();
 		var campus = organization.createCampus("캠퍼스-" + suffix);

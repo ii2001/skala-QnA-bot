@@ -11,6 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.skala.qna.organization.User;
 import com.skala.qna.organization.UserRepository;
+import com.skala.qna.organization.CampusRepository;
+import com.skala.qna.organization.ClassroomRepository;
 
 @Service
 @Transactional(readOnly = true)
@@ -19,13 +21,18 @@ public class SlackIntegrationService {
 	private final SlackUserMappingRepository userMappings;
 	private final SlackChannelMappingRepository channelMappings;
 	private final UserRepository users;
+	private final CampusRepository campuses;
+	private final ClassroomRepository classrooms;
 	private final SlackMessageSender messageSender;
 
 	public SlackIntegrationService(SlackUserMappingRepository userMappings,
-			SlackChannelMappingRepository channelMappings, UserRepository users, SlackMessageSender messageSender) {
+			SlackChannelMappingRepository channelMappings, UserRepository users, CampusRepository campuses,
+			ClassroomRepository classrooms, SlackMessageSender messageSender) {
 		this.userMappings = userMappings;
 		this.channelMappings = channelMappings;
 		this.users = users;
+		this.campuses = campuses;
+		this.classrooms = classrooms;
 		this.messageSender = messageSender;
 	}
 
@@ -44,7 +51,7 @@ public class SlackIntegrationService {
 
 	@Transactional
 	public SlackChannelMapping mapChannel(String scopeType, Long scopeId, String slackChannelId) {
-		String normalizedScopeType = required(scopeType, "범위 유형");
+		String normalizedScopeType = validateScope(scopeType, scopeId);
 		String normalizedSlackChannelId = required(slackChannelId, "Slack 채널 ID");
 		channelMappings.findBySlackChannelId(normalizedSlackChannelId)
 				.filter(mapping -> !mapping.getScopeType().equals(normalizedScopeType)
@@ -61,6 +68,35 @@ public class SlackIntegrationService {
 		return channelMappings.findAllByOrderByScopeTypeAscScopeIdAsc();
 	}
 
+	public List<SlackUserMapping> userMappings() {
+		return userMappings.findAll();
+	}
+
+	@Transactional
+	public void deleteUserMapping(Long id) {
+		userMappings.delete(userMappings.findById(id)
+				.orElseThrow(() -> notFound("Slack 사용자 매핑을 찾을 수 없습니다.")));
+	}
+
+	@Transactional
+	public SlackChannelMapping updateChannel(Long id, String scopeType, Long scopeId, String slackChannelId) {
+		SlackChannelMapping mapping = channelMappings.findById(id)
+				.orElseThrow(() -> notFound("Slack 채널 매핑을 찾을 수 없습니다."));
+		String normalizedScopeType = validateScope(scopeType, scopeId);
+		String normalizedSlackChannelId = required(slackChannelId, "Slack 채널 ID");
+		channelMappings.findBySlackChannelId(normalizedSlackChannelId)
+				.filter(other -> !other.getId().equals(id))
+				.ifPresent(other -> { throw conflict("이미 다른 범위에 연결된 Slack 채널 ID입니다."); });
+		mapping.update(normalizedScopeType, scopeId, normalizedSlackChannelId);
+		return mapping;
+	}
+
+	@Transactional
+	public void deleteChannel(Long id) {
+		channelMappings.delete(channelMappings.findById(id)
+				.orElseThrow(() -> notFound("Slack 채널 매핑을 찾을 수 없습니다.")));
+	}
+
 	public Optional<SlackUserMapping> userMapping(Long userId) {
 		return userMappings.findByUserId(userId);
 	}
@@ -72,6 +108,23 @@ public class SlackIntegrationService {
 	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	public SlackSendResult sendDirectMessage(String slackUserId, String text) {
 		return messageSender.sendDirectMessage(slackUserId, text);
+	}
+
+	private String validateScope(String scopeType, Long scopeId) {
+		String normalized = required(scopeType, "범위 유형").toUpperCase(java.util.Locale.ROOT);
+		switch (normalized) {
+		case "CLASS" -> {
+			if (scopeId == null || !classrooms.existsById(scopeId)) throw notFound("클래스를 찾을 수 없습니다.");
+		}
+		case "CAMPUS" -> {
+			if (scopeId == null || !campuses.existsById(scopeId)) throw notFound("캠퍼스를 찾을 수 없습니다.");
+		}
+		case "GLOBAL" -> {
+			if (scopeId != null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "GLOBAL 범위에는 scopeId를 사용할 수 없습니다.");
+		}
+		default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "범위 유형은 CLASS, CAMPUS 또는 GLOBAL이어야 합니다.");
+		}
+		return normalized;
 	}
 
 	private String required(String value, String field) {

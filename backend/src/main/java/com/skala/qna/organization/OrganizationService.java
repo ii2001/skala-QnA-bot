@@ -97,8 +97,14 @@ public class OrganizationService {
 
 	@Transactional
 	public User updateUser(Long id, String name, String email, UserRole role, String rawPassword) {
+		return updateUser(id, name, email, role, rawPassword, null);
+	}
+
+	@Transactional
+	public User updateUser(Long id, String name, String email, UserRole role, String rawPassword, Boolean active) {
 		User user = user(id);
-		user.update(name, email, role, rawPassword == null ? user.getPasswordHash() : hash(rawPassword));
+		user.update(name, email, role, rawPassword == null ? user.getPasswordHash() : hash(rawPassword),
+				active == null ? user.isActive() : active);
 		return user;
 	}
 

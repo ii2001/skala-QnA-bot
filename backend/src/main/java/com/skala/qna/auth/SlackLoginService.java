@@ -48,6 +48,9 @@ public class SlackLoginService {
 		SlackUserMapping mapping = mappings.findBySlackUserId(slackUserId).orElse(null);
 		User user = mapping == null ? users.findByEmail(email).orElseGet(() -> users.save(
 				new User(displayName(identity, email), email, loginRole))) : mapping.getUser();
+		if (!user.isActive()) {
+			throw failure("비활성화된 사용자입니다.", HttpStatus.FORBIDDEN);
+		}
 		if (mapping != null && !mapping.getUser().getEmail().equalsIgnoreCase(email)) {
 			throw failure("Slack identity가 다른 사용자에 연결되어 있습니다.", HttpStatus.CONFLICT);
 		}

@@ -26,7 +26,7 @@ public class AuthService {
 	public LoginResult login(String email, String rawPassword) {
 		User user = users.findByEmail(email)
 				.orElseThrow(this::invalidCredentials);
-		if (user.getPasswordHash() == null || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+		if (!user.isActive() || user.getPasswordHash() == null || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
 			throw invalidCredentials();
 		}
 		return new LoginResult(jwtService.issue(user.getId(), user.getRole()), jwtService.expirationSeconds(), user);

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 
-type User = { id: number; name: string; role: string }
+type User = { id: number; name: string; role: string; email?: string; active?: boolean }
 type LoginResponse = { accessToken: string; user: User }
 type Enrollment = { campusId: number; classroomId: number }
 type Campus = { id: number; name: string }
@@ -28,6 +28,10 @@ type ProfessorQuestion = Question & {
 type ProfessorDashboardResponse = { questions: ProfessorQuestion[]; unansweredCount: number }
 type DashboardFilters = { status: string; campusId: string; classroomId: string; category: string }
 type Answer = { id: number; questionId: number; professorId: number; content: string; visibility: string; createdAt: string }
+type StaffAccess = { id: number; email: string; expectedRole: string; active: boolean; note?: string; updatedAt: string }
+type ChannelMapping = { id: number; scopeType: string; scopeId: number | null; slackChannelId: string }
+type UserMapping = { id: number; userId: number; slackUserId: string }
+type Assignment = { id: number; professorId: number; campusId: number; classroomId: number }
 
 async function request<T>(path: string, token?: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -41,6 +45,7 @@ async function request<T>(path: string, token?: string, init?: RequestInit): Pro
     const problem = (await response.json().catch(() => null)) as { detail?: string } | null
     throw Object.assign(new Error(problem?.detail ?? '요청을 처리하지 못했습니다.'), { status: response.status })
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -272,6 +277,192 @@ function ProfessorDashboard({ token, user, onLogout }: { token: string; user: Us
   )
 }
 
+function AdminConsole({ token, user, onLogout }: { token: string; user: User; onLogout: () => void }) {
+  const [campuses, setCampuses] = useState<Campus[]>([])
+  const [classrooms, setClassrooms] = useState<Record<number, Classroom[]>>({})
+  const [users, setUsers] = useState<User[]>([])
+  const [staff, setStaff] = useState<StaffAccess[]>([])
+  const [channels, setChannels] = useState<ChannelMapping[]>([])
+  const [userMappings, setUserMappings] = useState<UserMapping[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
+  const [channelScopeType, setChannelScopeType] = useState('CLASS')
+  const [userQuery, setUserQuery] = useState('')
+  const allClassrooms = campuses.flatMap((campus) => classrooms[campus.id] ?? [])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const nextCampuses = await request<Campus[]>('/api/campuses', token)
+      const [nextUsers, nextStaff, nextChannels, nextMappings] = await Promise.all([
+        request<User[]>('/api/users', token),
+        request<StaffAccess[]>('/api/admin/staff-access', token),
+        request<ChannelMapping[]>('/api/slack/channel-mappings', token),
+        request<UserMapping[]>('/api/slack/user-mappings', token),
+      ])
+      const classroomEntries = await Promise.all(nextCampuses.map(async (campus) => [
+        campus.id,
+        await request<Classroom[]>(`/api/campuses/${campus.id}/classrooms`, token),
+      ] as const))
+      const professorEntries = await Promise.all(nextUsers.filter(({ role }) => role === 'PROFESSOR').map(async (professor) =>
+        request<Assignment[]>(`/api/professors/${professor.id}/assignments`, token)))
+      setCampuses(nextCampuses)
+      setClassrooms(Object.fromEntries(classroomEntries))
+      setUsers(nextUsers)
+      setStaff(nextStaff)
+      setChannels(nextChannels)
+      setUserMappings(nextMappings)
+      setAssignments(professorEntries.flat())
+    } catch (reason) {
+      setMessage((reason as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => { void load() }, [load])
+
+  async function mutate(action: Promise<unknown>) {
+    try {
+      await action
+      await load()
+      setMessage('저장했습니다.')
+    } catch (reason) {
+      setMessage((reason as Error).message)
+    }
+  }
+
+  async function createCampus(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await mutate(request('/api/campuses', token, { method: 'POST', body: JSON.stringify({ name: form.get('name') }) }))
+    event.currentTarget.reset()
+  }
+
+  async function updateCampus(campus: Campus) {
+    const name = window.prompt('캠퍼스 이름', campus.name)
+    if (name === null) return
+    await mutate(request(`/api/campuses/${campus.id}`, token, { method: 'PUT', body: JSON.stringify({ name }) }))
+  }
+
+  async function deleteCampus(campus: Campus) {
+    if (window.confirm(`'${campus.name}' 캠퍼스를 삭제할까요?`)) await mutate(request(`/api/campuses/${campus.id}`, token, { method: 'DELETE' }))
+  }
+
+  async function createClassroom(event: FormEvent<HTMLFormElement>, campusId: number) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await mutate(request(`/api/campuses/${campusId}/classrooms`, token, { method: 'POST', body: JSON.stringify({ name: form.get('name') }) }))
+    event.currentTarget.reset()
+  }
+
+  async function updateClassroom(classroom: Classroom) {
+    const name = window.prompt('클래스 이름', classroom.name)
+    if (name === null) return
+    await mutate(request(`/api/classrooms/${classroom.id}`, token, { method: 'PUT', body: JSON.stringify({ name }) }))
+  }
+
+  async function deleteClassroom(classroom: Classroom) {
+    if (window.confirm(`'${classroom.name}' 클래스를 삭제할까요?`)) await mutate(request(`/api/classrooms/${classroom.id}`, token, { method: 'DELETE' }))
+  }
+
+  async function updateUser(userToUpdate: User, role: string, active: boolean) {
+    await mutate(request(`/api/users/${userToUpdate.id}`, token, {
+      method: 'PUT',
+      body: JSON.stringify({ name: userToUpdate.name, email: userToUpdate.email, role, active }),
+    }))
+  }
+
+  async function createStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await mutate(request('/api/admin/staff-access', token, {
+      method: 'POST',
+      body: JSON.stringify({ email: form.get('email'), expectedRole: form.get('expectedRole'), note: form.get('note') }),
+    }))
+    event.currentTarget.reset()
+  }
+
+  async function editStaff(access: StaffAccess) {
+    const expectedRole = window.prompt('역할 (PROFESSOR 또는 ADMIN)', access.expectedRole)
+    if (expectedRole === null) return
+    const note = window.prompt('메모', access.note ?? '')
+    if (note === null) return
+    await mutate(request(`/api/admin/staff-access/${access.id}`, token, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRole, note, active: access.active }),
+    }))
+  }
+
+  async function deactivateStaff(access: StaffAccess) {
+    if (window.confirm(`${access.email}의 Staff 권한을 비활성화할까요?`)) await mutate(request(`/api/admin/staff-access/${access.id}`, token, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedRole: access.expectedRole, note: access.note, active: false }),
+    }))
+  }
+
+  async function createAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await mutate(request(`/api/professors/${form.get('professorId')}/assignments`, token, {
+      method: 'POST', body: JSON.stringify({ classroomId: Number(form.get('classroomId')) }),
+    }))
+    event.currentTarget.reset()
+  }
+
+  async function createChannelMapping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const scopeType = String(form.get('scopeType'))
+    await mutate(request('/api/slack/channel-mappings', token, {
+      method: 'POST', body: JSON.stringify({ scopeType, scopeId: scopeType === 'GLOBAL' ? null : Number(form.get('scopeId')), slackChannelId: form.get('slackChannelId') }),
+    }))
+    event.currentTarget.reset()
+  }
+
+  async function editChannel(channel: ChannelMapping) {
+    const slackChannelId = window.prompt('Slack 채널 ID', channel.slackChannelId)
+    if (slackChannelId === null) return
+    await mutate(request(`/api/slack/channel-mappings/${channel.id}`, token, {
+      method: 'PUT', body: JSON.stringify(channel.scopeType === 'GLOBAL'
+        ? { scopeType: channel.scopeType, scopeId: null, slackChannelId }
+        : { scopeType: channel.scopeType, scopeId: channel.scopeId, slackChannelId }),
+    }))
+  }
+
+  async function createUserMapping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await mutate(request('/api/slack/user-mappings', token, {
+      method: 'POST', body: JSON.stringify({ userId: Number(form.get('userId')), slackUserId: form.get('slackUserId') }),
+    }))
+    event.currentTarget.reset()
+  }
+
+  if (loading && users.length === 0) return <main className="app-shell"><p className="empty">관리 데이터를 불러오는 중입니다.</p></main>
+
+  return (
+    <main className="app-shell">
+      <header><div><p className="eyebrow">SKALA Q&amp;A ADMIN</p><h1>{user.name}님의 운영 콘솔</h1></div><button className="secondary" onClick={onLogout}>로그아웃</button></header>
+      {message && <p className="error" role="alert">{message}</p>}
+      <nav className="admin-nav" aria-label="관리 메뉴"><a href="#organization">조직</a><a href="#staff">Staff</a><a href="#users">사용자</a><a href="#assignments">교수 배정</a><a href="#slack">Slack</a></nav>
+
+      <section id="organization"><h2>캠퍼스·클래스</h2><form className="inline-form" onSubmit={createCampus}><input name="name" placeholder="새 캠퍼스 이름" required /><button>캠퍼스 추가</button></form>
+        <div className="admin-grid">{campuses.map((campus) => <article key={campus.id} className="admin-card"><h3>{campus.name}</h3><div className="button-row"><button type="button" className="secondary" onClick={() => updateCampus(campus)}>수정</button><button type="button" className="danger" onClick={() => deleteCampus(campus)}>삭제</button></div><ul>{(classrooms[campus.id] ?? []).map((classroom) => <li key={classroom.id}>{classroom.name} <button type="button" className="link-button" onClick={() => updateClassroom(classroom)}>수정</button><button type="button" className="link-button danger-text" onClick={() => deleteClassroom(classroom)}>삭제</button></li>)}</ul><form className="inline-form" onSubmit={(event) => createClassroom(event, campus.id)}><input name="name" placeholder="새 클래스 이름" required /><button>추가</button></form></article>)}</div>
+      </section>
+
+      <section id="staff"><h2>Staff 허용 목록</h2><form className="inline-form" onSubmit={createStaff}><input name="email" type="email" placeholder="이메일" required /><select name="expectedRole" defaultValue="PROFESSOR"><option value="PROFESSOR">교수</option><option value="ADMIN">ADMIN</option></select><input name="note" placeholder="메모" /><button>등록</button></form><ul className="admin-list">{staff.map((access) => <li key={access.id}><strong>{access.email}</strong> · {access.expectedRole} · {access.active ? '활성' : '비활성'} <button type="button" className="link-button" onClick={() => editStaff(access)}>수정</button>{access.active && <button type="button" className="link-button danger-text" onClick={() => deactivateStaff(access)}>비활성화</button>}</li>)}</ul></section>
+
+      <section id="users"><h2>사용자</h2><input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="이름 또는 이메일 검색" /><ul className="admin-list">{users.filter((listedUser) => `${listedUser.name} ${listedUser.email ?? ''}`.toLowerCase().includes(userQuery.toLowerCase())).map((listedUser) => <li key={listedUser.id}><strong>{listedUser.name}</strong> · {listedUser.email} · <select value={listedUser.role} onChange={(event) => updateUser(listedUser, event.target.value, listedUser.active !== false)}><option value="STUDENT">STUDENT</option><option value="PROFESSOR">PROFESSOR</option><option value="ADMIN">ADMIN</option></select> · {listedUser.active === false ? '비활성' : '활성'} <button type="button" className="link-button" onClick={() => updateUser(listedUser, listedUser.role, listedUser.active === false)}>상태 전환</button></li>)}</ul></section>
+
+      <section id="assignments"><h2>교수 담당 클래스</h2><form className="inline-form" onSubmit={createAssignment}><select name="professorId" required><option value="">교수 선택</option>{users.filter(({ role }) => role === 'PROFESSOR').map((professor) => <option key={professor.id} value={professor.id}>{professor.name}</option>)}</select><select name="classroomId" required><option value="">클래스 선택</option>{allClassrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}</select><button>배정</button></form><ul className="admin-list">{assignments.map((assignment) => <li key={assignment.id}>{users.find(({ id }) => id === assignment.professorId)?.name ?? assignment.professorId} → {allClassrooms.find(({ id }) => id === assignment.classroomId)?.name ?? assignment.classroomId} <button type="button" className="link-button danger-text" onClick={() => mutate(request(`/api/professor-assignments/${assignment.id}`, token, { method: 'DELETE' }))}>해제</button></li>)}</ul></section>
+
+      <section id="slack"><h2>Slack 매핑</h2><form className="inline-form" onSubmit={createUserMapping}><select name="userId" required><option value="">사용자 선택</option>{users.map((listedUser) => <option key={listedUser.id} value={listedUser.id}>{listedUser.name} · {listedUser.email}</option>)}</select><input name="slackUserId" placeholder="Slack 사용자 ID" required /><button>사용자 매핑</button></form><ul className="admin-list">{userMappings.map((mapping) => <li key={mapping.id}>{users.find(({ id }) => id === mapping.userId)?.email ?? mapping.userId} → {mapping.slackUserId} <button type="button" className="link-button danger-text" onClick={() => mutate(request(`/api/slack/user-mappings/${mapping.id}`, token, { method: 'DELETE' }))}>삭제</button></li>)}</ul><form className="inline-form" onSubmit={createChannelMapping}><select name="scopeType" value={channelScopeType} onChange={(event) => setChannelScopeType(event.target.value)}><option value="CLASS">클래스</option><option value="CAMPUS">캠퍼스</option><option value="GLOBAL">전체</option></select>{channelScopeType !== 'GLOBAL' && <select name="scopeId" required><option value="">범위 선택</option>{channelScopeType === 'CAMPUS' ? campuses.map((campus) => <option key={campus.id} value={campus.id}>{campus.name}</option>) : allClassrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}</select>}<input name="slackChannelId" placeholder="Slack 채널 ID" required /><button>채널 매핑</button></form><ul className="admin-list">{channels.map((channel) => <li key={channel.id}>{channel.scopeType}:{channel.scopeId ?? 'all'} → {channel.slackChannelId} <button type="button" className="link-button" onClick={() => editChannel(channel)}>수정</button><button type="button" className="link-button danger-text" onClick={() => mutate(request(`/api/slack/channel-mappings/${channel.id}`, token, { method: 'DELETE' }))}>삭제</button></li>)}</ul></section>
+    </main>
+  )
+}
+
 function App() {
   const [token, setToken] = useState('')
   const [user, setUser] = useState<User | null>(null)
@@ -342,7 +533,7 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ email: form.get('email'), password: form.get('password') }),
       })
-      if (result.user.role !== 'STUDENT' && result.user.role !== 'PROFESSOR') throw new Error('학생 또는 교수 계정으로 로그인해 주세요.')
+      if (!['STUDENT', 'PROFESSOR', 'ADMIN'].includes(result.user.role)) throw new Error('허용되지 않은 계정입니다.')
       setToken(result.accessToken)
       setUser(result.user)
     } catch (reason) {
@@ -424,6 +615,7 @@ function App() {
   }
 
   if (user.role === 'PROFESSOR') return <ProfessorDashboard token={token} user={user} onLogout={logout} />
+  if (user.role === 'ADMIN') return <AdminConsole token={token} user={user} onLogout={logout} />
   if (onboarding) return <StudentOnboarding token={token} userId={user.id} campuses={campuses} onComplete={() => {
     setOnboarding(false)
     setEnrollment(null)

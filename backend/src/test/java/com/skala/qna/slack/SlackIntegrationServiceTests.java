@@ -29,15 +29,17 @@ class SlackIntegrationServiceTests {
 	void storesUserAndChannelMappingsAndUsesReplaceableSender() {
 		String suffix = java.util.UUID.randomUUID().toString();
 		var user = organization.createUser("Slack 학생", "slack-" + suffix + "@example.com", UserRole.STUDENT);
+		var campus = organization.createCampus("Slack 캠퍼스 " + suffix);
+		var classroom = organization.createClassroom(campus.getId(), "Slack 클래스");
 
 		SlackUserMapping userMapping = slack.mapUser(user.getId(), "U" + suffix.replace("-", ""));
-		SlackChannelMapping channelMapping = slack.mapChannel("CLASS", 42L, "C" + suffix.replace("-", ""));
+		SlackChannelMapping channelMapping = slack.mapChannel("CLASS", classroom.getId(), "C" + suffix.replace("-", ""));
 		SlackSendResult sendResult = slack.sendMessage(channelMapping.getSlackChannelId(), "테스트 메시지");
 
 		assertThat(userMapping.getUser().getId()).isEqualTo(user.getId());
 		assertThat(userMapping.getSlackUserId()).startsWith("U");
 		assertThat(channelMapping.getScopeType()).isEqualTo("CLASS");
-		assertThat(channelMapping.getScopeId()).isEqualTo(42L);
+		assertThat(channelMapping.getScopeId()).isEqualTo(classroom.getId());
 		assertThat(sendResult.sent()).isTrue();
 		assertThat(sendResult.channelId()).isEqualTo(channelMapping.getSlackChannelId());
 	}

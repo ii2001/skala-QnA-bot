@@ -19,6 +19,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.skala.qna.organization.OrganizationService;
 import com.skala.qna.organization.UserRepository;
 import com.skala.qna.organization.UserRole;
+import com.skala.qna.admin.StaffAccessAuditLogRepository;
+import com.skala.qna.admin.StaffAccessRepository;
+import com.skala.qna.slack.SlackUserMappingRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -35,8 +38,20 @@ class AuthenticationIntegrationTests {
 	@Autowired
 	private UserRepository users;
 
+	@Autowired
+	private StaffAccessAuditLogRepository staffAuditLogs;
+
+	@Autowired
+	private StaffAccessRepository staffAccess;
+
+	@Autowired
+	private SlackUserMappingRepository slackMappings;
+
 	@BeforeEach
 	void clearUsers() {
+		staffAuditLogs.deleteAll();
+		staffAccess.deleteAll();
+		slackMappings.deleteAll();
 		users.deleteAll();
 	}
 
@@ -91,6 +106,14 @@ class AuthenticationIntegrationTests {
 				.andExpect(status().isForbidden());
 		mockMvc.perform(post("/api/campuses").header("Authorization", "Bearer " + adminToken)
 				.contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"관리 캠퍼스\"}"))
+				.andExpect(status().isCreated());
+		mockMvc.perform(post("/api/admin/staff-access").header("Authorization", "Bearer " + studentToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"staff@example.com\",\"expectedRole\":\"PROFESSOR\"}"))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(post("/api/admin/staff-access").header("Authorization", "Bearer " + adminToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"staff@example.com\",\"expectedRole\":\"PROFESSOR\"}"))
 				.andExpect(status().isCreated());
 
 		Long otherStudentId = users.findByEmail(otherStudentEmail).orElseThrow().getId();

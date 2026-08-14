@@ -10,6 +10,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.skala.qna.organization.User;
 import com.skala.qna.organization.UserRepository;
 import com.skala.qna.organization.UserRole;
+import com.skala.qna.admin.StaffAccess;
+import com.skala.qna.admin.StaffAccessService;
 import com.skala.qna.slack.SlackUserMapping;
 import com.skala.qna.slack.SlackUserMappingRepository;
 
@@ -18,12 +20,14 @@ public class SlackLoginService {
 
 	private final UserRepository users;
 	private final SlackUserMappingRepository mappings;
+	private final StaffAccessService staff;
 	private final String allowedTeamId;
 
-	public SlackLoginService(UserRepository users, SlackUserMappingRepository mappings,
+	public SlackLoginService(UserRepository users, SlackUserMappingRepository mappings, StaffAccessService staff,
 			@Value("${SLACK_ALLOWED_TEAM_ID:}") String allowedTeamId) {
 		this.users = users;
 		this.mappings = mappings;
+		this.staff = staff;
 		this.allowedTeamId = allowedTeamId == null ? "" : allowedTeamId.trim();
 	}
 
@@ -38,10 +42,12 @@ public class SlackLoginService {
 		if (!allowedTeamId.isBlank() && !allowedTeamId.equals(teamId)) {
 			throw failure("허용되지 않은 Slack Workspace입니다.", HttpStatus.FORBIDDEN);
 		}
+		StaffAccess staffAccess = staff.activeAccess(email);
+		UserRole loginRole = staffAccess == null ? UserRole.STUDENT : staffAccess.getExpectedRole();
 
 		SlackUserMapping mapping = mappings.findBySlackUserId(slackUserId).orElse(null);
 		User user = mapping == null ? users.findByEmail(email).orElseGet(() -> users.save(
-				new User(displayName(identity, email), email, UserRole.STUDENT))) : mapping.getUser();
+				new User(displayName(identity, email), email, loginRole))) : mapping.getUser();
 		if (mapping != null && !mapping.getUser().getEmail().equalsIgnoreCase(email)) {
 			throw failure("Slack identity가 다른 사용자에 연결되어 있습니다.", HttpStatus.CONFLICT);
 		}
@@ -53,6 +59,9 @@ public class SlackLoginService {
 			mappings.save(new SlackUserMapping(user, teamId, slackUserId));
 		} else {
 			mapping.updateIdentity(teamId, slackUserId);
+		}
+		if (user.getRole() != UserRole.ADMIN || loginRole == UserRole.ADMIN) {
+			user.update(user.getName(), user.getEmail(), loginRole);
 		}
 		return user;
 	}

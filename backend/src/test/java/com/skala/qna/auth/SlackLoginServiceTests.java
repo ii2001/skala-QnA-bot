@@ -21,6 +21,7 @@ import com.skala.qna.organization.OrganizationService;
 import com.skala.qna.organization.UserRepository;
 import com.skala.qna.organization.UserRole;
 import com.skala.qna.slack.SlackUserMappingRepository;
+import com.skala.qna.admin.StaffAccessService;
 
 @SpringBootTest
 @Transactional
@@ -39,6 +40,9 @@ class SlackLoginServiceTests {
 	@Autowired
 	private SlackUserMappingRepository mappings;
 
+	@Autowired
+	private StaffAccessService staff;
+
 	@Test
 	void createsAndReusesStudentAndSlackIdentity() {
 		OidcUser identity = identity("U123", "T123", "student@example.com", "학생");
@@ -55,6 +59,7 @@ class SlackLoginServiceTests {
 	@Test
 	void preservesExistingInternalRoleWhenLinkingByEmail() {
 		var professor = organization.createUser("교수", "professor@example.com", UserRole.PROFESSOR);
+		staff.create(professor.getEmail(), UserRole.PROFESSOR, "담당 교수", null);
 
 		var linked = slackLogin.login(identity("U456", "T123", professor.getEmail(), professor.getName()));
 

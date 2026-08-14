@@ -98,3 +98,15 @@ docker compose config --quiet
    ```
 
 토큰이나 채널 ID가 없으면 애플리케이션은 정상적으로 시작하고, 테스트 요청은 원인을 담은 `503 Service Unavailable`을 반환합니다. 시스템 사용자·Slack 사용자와 범위·Slack 채널 연결은 관리자 전용 `/api/slack/user-mappings`, `/api/slack/channel-mappings`에서 관리합니다.
+
+## Free Test Deployment
+
+실제 계정과 URL을 저장소에 넣지 않고 다음 무료 구성으로 테스트 환경을 만들 수 있습니다.
+
+1. Supabase에서 Free project를 만들고 PostgreSQL connection string을 확인합니다. Render의 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` secret으로만 입력합니다. 새 데이터베이스는 애플리케이션 시작 시 Flyway V1~V9가 순서대로 적용됩니다.
+2. Render에서 이 저장소의 `main`을 연결합니다. `render.yaml` 또는 Dockerfile 설정을 사용하면 무료 Web Service와 `/actuator/health` health check가 구성됩니다. Render가 주입하는 `PORT`를 Spring Boot가 사용하며, 무료 인스턴스는 유휴 시 sleep/cold start가 발생할 수 있습니다.
+3. Cloudflare Pages에서 이 저장소의 `frontend` 디렉터리를 연결하고 build command를 `npm run build`, output directory를 `dist`로 설정합니다. `VITE_API_BASE_URL`에는 Render backend HTTPS URL을 입력합니다. `frontend/public/_redirects`가 SPA 새로고침을 처리합니다.
+4. Render의 `FRONTEND_ORIGIN`에는 Cloudflare Pages의 정확한 HTTPS origin만 입력합니다. wildcard CORS는 사용하지 않습니다.
+5. Slack App OAuth Redirect URL과 Render의 `SLACK_REDIRECT_URI`를 `https://<render-host>/login/oauth2/code/slack`로 맞추고, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_ALLOWED_TEAM_ID`를 Render secret으로 입력합니다. 최초 ADMIN은 `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD`를 입력합니다.
+
+배포 후에는 `/actuator/health`가 `UP`인지 확인하고 Slack 로그인 redirect, `/api/auth/me`, 신규 Supabase persistence, 학생 onboarding, 교수·ADMIN 권한을 순서대로 smoke test합니다. 실제 Slack DM/Broadcast E2E와 운영 Workspace 적용은 각각 Issue #25와 #26의 절차를 따릅니다.

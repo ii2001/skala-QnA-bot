@@ -51,6 +51,8 @@ class AuthenticationIntegrationTests {
 
 		mockMvc.perform(get("/api/campuses").header("Authorization", "Bearer " + token))
 				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk());
 	}
 
 	@Test

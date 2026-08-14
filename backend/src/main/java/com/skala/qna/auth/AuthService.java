@@ -32,6 +32,10 @@ public class AuthService {
 		return new LoginResult(jwtService.issue(user.getId(), user.getRole()), jwtService.expirationSeconds(), user);
 	}
 
+	public User user(Long userId) {
+		return users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+	}
+
 	private ResponseStatusException invalidCredentials() {
 		return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.");
 	}

@@ -53,6 +53,17 @@ SKALA 학생과 교수자의 질문·답변을 관리하는 모듈러 모놀리�
 
 `POST /api/auth/login`에 이메일과 비밀번호를 보내면 Bearer JWT를 발급합니다. `/api/auth/login`과 `/actuator/health`를 제외한 API는 `Authorization: Bearer <token>` 헤더가 필요합니다. 사용자 생성 시 비밀번호는 8~128자여야 하며, JWT 서명키는 `.env`의 `JWT_SECRET`에 32바이트 이상으로 설정합니다.
 
+Slack 로그인을 사용하려면 Slack App의 OAuth Redirect URL을 `SLACK_REDIRECT_URI`와 동일하게 등록하고 다음 환경변수를 설정합니다. Slack OIDC의 `openid`, `email`, `profile` scope를 사용하며, `SLACK_ALLOWED_TEAM_ID`를 지정하면 해당 Workspace만 허용합니다.
+
+```dotenv
+SLACK_CLIENT_ID=...
+SLACK_CLIENT_SECRET=...
+SLACK_REDIRECT_URI=http://localhost:8080/login/oauth2/code/slack
+SLACK_ALLOWED_TEAM_ID=T0123456789
+```
+
+프론트엔드의 `Slack으로 로그인` 버튼은 백엔드 `/oauth2/authorization/slack`에서 시작하고, 검증된 Slack identity를 기존 내부 JWT로 교환한 뒤 프론트엔드로 돌아옵니다. 이메일·비밀번호 로그인은 개발·관리자 fallback으로 유지합니다.
+
 ## 검증
 
 ```bash

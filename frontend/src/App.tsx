@@ -39,9 +39,63 @@ async function request<T>(path: string, token?: string, init?: RequestInit): Pro
   })
   if (!response.ok) {
     const problem = (await response.json().catch(() => null)) as { detail?: string } | null
-    throw new Error(problem?.detail ?? '요청을 처리하지 못했습니다.')
+    throw Object.assign(new Error(problem?.detail ?? '요청을 처리하지 못했습니다.'), { status: response.status })
   }
   return response.json() as Promise<T>
+}
+
+function StudentOnboarding({ token, userId, campuses, onComplete }: { token: string; userId: number; campuses: Campus[]; onComplete: () => void }) {
+  const [campusId, setCampusId] = useState('')
+  const [classrooms, setClassrooms] = useState<Classroom[]>([])
+  const [classroomId, setClassroomId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setClassroomId('')
+    if (!campusId) {
+      setClassrooms([])
+      return
+    }
+    request<Classroom[]>(`/api/campuses/${campusId}/classrooms`, token)
+      .then(setClassrooms)
+      .catch((reason: Error) => setError(reason.message))
+  }, [campusId, token])
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      await request(`/api/students/${userId}/enrollment`, token, {
+        method: 'PUT',
+        body: JSON.stringify({ campusId: Number(campusId), classroomId: Number(classroomId) }),
+      })
+      onComplete()
+    } catch (reason) {
+      setError((reason as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="login-card">
+      <p className="eyebrow">SKALA Q&amp;A</p>
+      <h1>학생 정보 설정</h1>
+      <p className="empty">질문을 등록하려면 캠퍼스와 클래스를 먼저 선택해 주세요.</p>
+      <form onSubmit={submit}>
+        <label>캠퍼스<select value={campusId} onChange={(event) => setCampusId(event.target.value)} required>
+          <option value="">캠퍼스 선택</option>{campuses.map((campus) => <option key={campus.id} value={campus.id}>{campus.name}</option>)}
+        </select></label>
+        <label>클래스<select value={classroomId} onChange={(event) => setClassroomId(event.target.value)} required disabled={!campusId}>
+          <option value="">클래스 선택</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}
+        </select></label>
+        <button type="submit" disabled={loading || !classroomId}>{loading ? '저장 중...' : '저장하고 시작하기'}</button>
+      </form>
+      {error && <p className="error" role="alert">{error}</p>}
+    </main>
+  )
 }
 
 function statusLabel(status: string) {
@@ -222,6 +276,8 @@ function App() {
   const [token, setToken] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
+  const [onboarding, setOnboarding] = useState(false)
+  const [campuses, setCampuses] = useState<Campus[]>([])
   const [campus, setCampus] = useState<Campus | null>(null)
   const [classroom, setClassroom] = useState<Classroom | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
@@ -249,18 +305,27 @@ function App() {
     if (!token || !user || user.role !== 'STUDENT') return
     let active = true
     Promise.all([
-      request<Enrollment>(`/api/students/${user.id}/enrollment`, token),
       request<Campus[]>('/api/campuses', token),
-      request<Question[]>('/api/questions', token),
+      request<Enrollment>(`/api/students/${user.id}/enrollment`, token).catch((reason: Error & { status?: number }) => {
+        if (reason.status === 404) return null
+        throw reason
+      }),
     ])
-      .then(async ([nextEnrollment, campuses, nextQuestions]) => {
+      .then(async ([nextCampuses, nextEnrollment]) => {
+        setCampuses(nextCampuses)
+        if (!nextEnrollment) {
+          if (active) setOnboarding(true)
+          return
+        }
+        const nextQuestions = await request<Question[]>('/api/questions', token)
         const classrooms = await request<Classroom[]>(
           `/api/campuses/${nextEnrollment.campusId}/classrooms`,
           token,
         )
         if (!active) return
+        setOnboarding(false)
         setEnrollment(nextEnrollment)
-        setCampus(campuses.find(({ id }) => id === nextEnrollment.campusId) ?? null)
+        setCampus(nextCampuses.find(({ id }) => id === nextEnrollment.campusId) ?? null)
         setClassroom(classrooms.find(({ id }) => id === nextEnrollment.classroomId) ?? null)
         setQuestions(nextQuestions)
       })
@@ -329,6 +394,8 @@ function App() {
     setToken('')
     setUser(null)
     setEnrollment(null)
+    setOnboarding(false)
+    setCampuses([])
     setCampus(null)
     setClassroom(null)
     setQuestions([])
@@ -357,6 +424,11 @@ function App() {
   }
 
   if (user.role === 'PROFESSOR') return <ProfessorDashboard token={token} user={user} onLogout={logout} />
+  if (onboarding) return <StudentOnboarding token={token} userId={user.id} campuses={campuses} onComplete={() => {
+    setOnboarding(false)
+    setEnrollment(null)
+    setUser((current) => current ? { ...current } : current)
+  }} />
 
   return (
     <main className="app-shell">

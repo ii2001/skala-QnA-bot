@@ -43,6 +43,10 @@ dialog::backdrop { background: rgb(15 23 42 / 45%); }
 .question-content { white-space: pre-wrap; line-height: 1.7; }
 .answer-form { margin-top: 28px; padding-top: 24px; border-top: 1px solid #dbe2ea; }
 .answer-form h3 { margin: 0 0 16px; }
+.search-panel { margin-bottom: 32px; padding: 24px; border-radius: 16px; background: #f8fafc; }
+.search-result { display: grid; gap: 6px; padding: 16px; color: #172033; background: #fff; }
+.search-result span { color: #64748b; font-size: .8rem; }
+.search-result p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
 .admin-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
 .admin-nav a { padding: 8px 12px; border-radius: 999px; color: #1d4ed8; background: #eff6ff; font-weight: 700; text-decoration: none; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 20px; }
